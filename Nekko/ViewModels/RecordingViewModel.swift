@@ -7,7 +7,6 @@
 
 import AVFoundation
 import Foundation
-import Speech
 import SwiftData
 
 @Observable
@@ -15,14 +14,12 @@ final class RecordingViewModel {
     var selectedLanguage: SupportedLanguage = .japanese
     var isRecording = false
     var recordingDuration: TimeInterval = 0
-    var liveTranscription = ""
     var audioLevels: [Float] = []
     var errorMessage: String?
     var showError = false
     var permissionsGranted = false
 
     private var audioRecorder = AudioRecorderService()
-    private var transcriptionService = LiveTranscriptionService()
     private var displayTimer: Timer?
     private var currentAudioFileName: String?
     private var currentAudioURL: URL?
@@ -35,13 +32,12 @@ final class RecordingViewModel {
     }
 
     func checkPermissions() async {
-        let micGranted = await LiveTranscriptionService.requestMicrophonePermission()
-        let speechStatus = await LiveTranscriptionService.requestAuthorization()
+        let micGranted = await AVAudioApplication.requestRecordPermission()
 
         await MainActor.run {
-            permissionsGranted = micGranted && speechStatus == .authorized
+            permissionsGranted = micGranted
             if !permissionsGranted {
-                errorMessage = "マイクと音声認識の権限が必要です。設定アプリから許可してください。"
+                errorMessage = "マイクの権限が必要です。設定アプリから許可してください。"
                 showError = true
             }
         }
@@ -62,7 +58,6 @@ final class RecordingViewModel {
             return
         }
 
-        liveTranscription = ""
         audioLevels = Array(repeating: 0, count: 60)
         recordingDuration = 0
 
@@ -70,10 +65,6 @@ final class RecordingViewModel {
         currentAudioFileName = fileName
 
         do {
-            audioRecorder.onAudioBuffer = { [weak self] buffer in
-                self?.transcriptionService.appendAudioBuffer(buffer)
-            }
-
             audioRecorder.onAudioLevelUpdate = { [weak self] level in
                 Task { @MainActor [weak self] in
                     guard let self else { return }
@@ -86,15 +77,6 @@ final class RecordingViewModel {
 
             let audioURL = try audioRecorder.startRecording(fileName: fileName)
             currentAudioURL = audioURL
-
-            transcriptionService.startTranscription(
-                locale: selectedLanguage.sfSpeechLocale
-            ) { [weak self] text in
-                Task { @MainActor [weak self] in
-                    guard let self else { return }
-                    self.liveTranscription = text
-                }
-            }
 
             isRecording = true
 
@@ -121,33 +103,26 @@ final class RecordingViewModel {
 
         isRecording = false
 
-        Task { @MainActor in
-            let finalText = await transcriptionService.stopAndGetFinalText()
-            let transcription = finalText.isEmpty ? liveTranscription : finalText
+        UsageTracker.shared.addUsage(seconds: duration)
 
-            UsageTracker.shared.addUsage(seconds: duration)
+        let title = generateTitle()
+        let recording = Recording(
+            title: title,
+            language: language,
+            duration: duration,
+            audioFileName: fileName
+        )
 
-            let title = generateTitle()
-            let recording = Recording(
-                title: title,
-                language: language,
-                duration: duration,
-                audioFileName: fileName,
-                liveTranscription: transcription
-            )
+        modelContext.insert(recording)
 
-            modelContext.insert(recording)
-
-            if NetworkMonitor.shared.isConnected {
-                recording.isProcessing = true
-                Task {
-                    await processWithMistral(recording: recording, modelContext: modelContext)
-                }
+        if NetworkMonitor.shared.isConnected {
+            recording.isProcessing = true
+            Task {
+                await processWithMistral(recording: recording, modelContext: modelContext)
             }
-
-            liveTranscription = ""
-            audioLevels = Array(repeating: 0, count: 60)
         }
+
+        audioLevels = Array(repeating: 0, count: 60)
     }
 
     private func generateTitle() -> String {

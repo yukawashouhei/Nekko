@@ -75,42 +75,33 @@ struct RecordingView: View {
     @State private var animatingDot = true
 
     private var transcriptionArea: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                VStack(alignment: .leading, spacing: 8) {
-                    if viewModel.liveTranscription.isEmpty && viewModel.isRecording {
-                        Text("音声を認識中...")
-                            .foregroundStyle(.tertiary)
-                            .italic()
-                    } else if !viewModel.liveTranscription.isEmpty {
-                        Text(viewModel.liveTranscription)
-                            .font(.body)
-                            .textSelection(.enabled)
-                    } else if !viewModel.isRecording {
-                        VStack(spacing: 12) {
-                            Image(systemName: "waveform")
-                                .font(.system(size: 40))
-                                .foregroundStyle(.tertiary)
-                            Text("録音ボタンを押して開始")
-                                .font(.subheadline)
-                                .foregroundStyle(.tertiary)
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .padding(.top, 80)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 8) {
+                if viewModel.isRecording {
+                    VStack(spacing: 12) {
+                        ProgressView()
+                            .controlSize(.regular)
+                        Text("録音停止後にMistral AIで文字起こしします")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
                     }
-
-                    Color.clear
-                        .frame(height: 1)
-                        .id("bottom")
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 40)
+                } else {
+                    VStack(spacing: 12) {
+                        Image(systemName: "waveform")
+                            .font(.system(size: 40))
+                            .foregroundStyle(.tertiary)
+                        Text("録音ボタンを押して開始")
+                            .font(.subheadline)
+                            .foregroundStyle(.tertiary)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .padding(.top, 80)
                 }
-                .padding()
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .onChange(of: viewModel.liveTranscription) {
-                withAnimation {
-                    proxy.scrollTo("bottom", anchor: .bottom)
-                }
-            }
+            .padding()
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .onAppear {
             withAnimation(.easeInOut(duration: 0.8).repeatForever()) {

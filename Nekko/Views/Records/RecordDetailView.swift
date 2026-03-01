@@ -104,41 +104,38 @@ struct RecordDetailView: View {
     private var transcriptionContent: some View {
         Group {
             if let final_ = recording.finalTranscription, !final_.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    Label("AI文字起こし", systemImage: "sparkles")
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(.orange)
-
-                    Text(final_)
-                        .font(.body)
-                        .textSelection(.enabled)
+                Text(final_)
+                    .font(.body)
+                    .textSelection(.enabled)
+            } else if recording.isProcessing {
+                VStack(spacing: 12) {
+                    ProgressView()
+                    Text("Mistral AIで文字起こし中...")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
                 }
-            }
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.top, 40)
+            } else {
+                VStack(spacing: 12) {
+                    Image(systemName: "text.document")
+                        .font(.system(size: 40))
+                        .foregroundStyle(.tertiary)
+                    Text("文字起こしデータがありません")
+                        .foregroundStyle(.tertiary)
+                        .italic()
 
-            if !recording.liveTranscription.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    if recording.finalTranscription != nil {
-                        Label("ライブ文字起こし", systemImage: "mic")
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(.secondary)
+                    if recording.audioFileName != nil && NetworkMonitor.shared.isConnected {
+                        Button("文字起こしを実行") {
+                            retryTranscription()
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.orange)
+                        .disabled(isRetrying)
                     }
-
-                    Text(recording.liveTranscription)
-                        .font(.body)
-                        .foregroundStyle(
-                            recording.finalTranscription != nil
-                                ? .secondary : .primary
-                        )
-                        .textSelection(.enabled)
                 }
-            }
-
-            if recording.liveTranscription.isEmpty
-                && recording.finalTranscription == nil
-            {
-                Text("文字起こしデータがありません")
-                    .foregroundStyle(.tertiary)
-                    .italic()
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.top, 40)
             }
         }
     }
@@ -167,7 +164,7 @@ struct RecordDetailView: View {
                         .font(.subheadline)
                         .foregroundStyle(.tertiary)
 
-                    if recording.finalTranscription != nil || !recording.liveTranscription.isEmpty {
+                    if recording.finalTranscription != nil {
                         Button("要約を生成") {
                             retrySummarization()
                         }
@@ -242,6 +239,35 @@ struct RecordDetailView: View {
         }
     }
 
+    private func retryTranscription() {
+        guard let audioFileName = recording.audioFileName else { return }
+        isRetrying = true
+        recording.isProcessing = true
+        Task {
+            let documentsPath = FileManager.default.urls(
+                for: .documentDirectory, in: .userDomainMask
+            )[0]
+            let audioURL = documentsPath.appendingPathComponent(audioFileName)
+            do {
+                let transcription = try await BackendAPIService.shared.transcribe(
+                    audioFileURL: audioURL,
+                    language: recording.language
+                )
+                recording.finalTranscription = transcription
+
+                let summary = try await BackendAPIService.shared.summarize(
+                    text: transcription,
+                    language: recording.language
+                )
+                recording.summary = summary
+            } catch {
+                print("Transcription retry failed: \(error)")
+            }
+            recording.isProcessing = false
+            isRetrying = false
+        }
+    }
+
     private func retrySummarization() {
         isRetrying = true
         recording.isProcessing = true
@@ -265,13 +291,16 @@ struct RecordDetailView: View {
 #Preview {
     NavigationStack {
         RecordDetailView(
-            recording: Recording(
-                title: "2月 28日, 19:01",
-                language: "ja",
-                duration: 125,
-                audioFileName: nil,
-                liveTranscription: "えっと、今録音テスト中です。このテストの音声なので、実際には使われない音声です。とねっこのテスト用に今録音しています。"
-            )
+            recording: {
+                let r = Recording(
+                    title: "2月 28日, 19:01",
+                    language: "ja",
+                    duration: 125,
+                    audioFileName: nil
+                )
+                r.finalTranscription = "えっと、今録音テスト中です。このテストの音声なので、実際には使われない音声です。とねっこのテスト用に今録音しています。"
+                return r
+            }()
         )
     }
     .modelContainer(for: Recording.self, inMemory: true)
