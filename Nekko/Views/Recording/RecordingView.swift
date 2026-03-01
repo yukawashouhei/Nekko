@@ -11,6 +11,7 @@ import SwiftUI
 struct RecordingView: View {
     @Environment(\.modelContext) private var modelContext
     @State private var viewModel = RecordingViewModel()
+    @State private var currentCatIndex: Int = 1
 
     var body: some View {
         NavigationStack {
@@ -26,7 +27,7 @@ struct RecordingView: View {
                     AudioWaveformView(levels: viewModel.audioLevels)
                         .frame(height: 80)
                         .padding(.horizontal)
-                        .padding(.top, viewModel.isRecording ? 8 : 40)
+                        .padding(.top, viewModel.isRecording ? 32 : 40)
 
                     transcriptionArea
 
@@ -34,9 +35,22 @@ struct RecordingView: View {
 
                     controlsArea
                 }
+                .padding(.top, 100)
             }
-            .navigationTitle("Nekko")
+            .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Image("Cat\(currentCatIndex)")
+                        .resizable()
+                        .scaledToFit()
+                        .frame(height: 144)
+                        .padding(.top, 124)
+                }
+            }
+            .onAppear {
+                currentCatIndex = Int.random(in: 1...6)
+            }
             .task {
                 await viewModel.checkPermissions()
             }
