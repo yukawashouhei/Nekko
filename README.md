@@ -1,60 +1,81 @@
 # Nekko (CatScript)
 
-Mistral AI を活用した録音・文字起こし・要約・翻訳の iOS アプリ。ウィジェットではドット絵の猫が様々なアクティビティをしています。
+> [日本語](./README.ja.md) | [Français](./README.fr.md)
 
-## 主な機能
+An iOS app for recording, transcribing, summarizing, and translating speech — powered entirely by **Mistral AI**. A pixel-art cat greets you each time you open the app.
 
-- **録音**: マイクから高品質で録音（M4A）
-- **リアルタイム文字起こし**: 録音中に Mistral のリアルタイム API でライブ表示
-- **文字起こし（話者識別）**: 録音停止後に Voxtral Mini で文字起こしし、話者ごとに表示（Speaker 1, 2...）
-- **要約**: 文字起こしテキストを Mistral Small で要約
-- **翻訳**: 記録詳細で翻訳先言語を選んで翻訳
-- **使用量**: 1 ヶ月あたり 600 分までの利用制限を表示
-- **ウィジェット**: ホーム画面にドット絵の猫ウィジェット
+## Features
 
-## アーキテクチャ
+- **Recording** — High-quality audio capture (M4A) via the device microphone.
+- **Realtime transcription** — Live captions streamed during recording through Mistral's Realtime WebSocket API.
+- **Batch transcription with speaker diarization** — After recording, the audio is transcribed with speaker labels (Speaker 1, 2...) using the Voxtral Mini batch API.
+- **Summarization** — Generates a concise summary of the transcript using Mistral Small.
+- **Translation** — Translates the transcript into a chosen language using Mistral Small.
+- **Usage tracking** — Displays monthly usage against a 600-minute limit.
+- **Widget** — A pixel-art cat widget for the home screen.
 
-アプリは **Mistral API に直接接続**します。バックエンドサーバーは不要で、実機・シミュレータのどちらでも同じように動作します。
+## How Mistral AI is Used
+
+| Feature | Model | API |
+|---------|-------|-----|
+| Realtime transcription | `voxtral-mini-transcribe-realtime-2602` | WebSocket `wss://api.mistral.ai/v1/audio/transcriptions/realtime` |
+| Batch transcription (diarization) | `voxtral-mini-latest` | `POST /v1/audio/transcriptions` with `diarize=true` |
+| Summarization | `mistral-small-latest` | `POST /v1/chat/completions` |
+| Translation | `mistral-small-latest` | `POST /v1/chat/completions` |
+
+All API calls are made **directly from the iOS app** to `api.mistral.ai`. No backend server is required.
+
+## Architecture
 
 ```
 iOS App (Nekko)
-    ├── 録音中: WebSocket → Mistral Realtime (voxtral-mini-transcribe-realtime-2602)
-    ├── 文字起こし: POST /v1/audio/transcriptions (voxtral-mini-latest, diarize=true)
-    ├── 要約・翻訳: POST /v1/chat/completions (mistral-small-latest)
-    └── データ: SwiftData (ローカル) / UserDefaults (API キー)
+    ├── While recording : WebSocket → Mistral Realtime (voxtral-mini-transcribe-realtime-2602)
+    ├── After recording : POST /v1/audio/transcriptions (voxtral-mini-latest, diarize=true)
+    ├── Summary & Translation : POST /v1/chat/completions (mistral-small-latest)
+    └── Data : SwiftData (local) / UserDefaults (API key)
 ```
 
-- **リアルタイム文字起こし**: Mistral Realtime WebSocket（16kHz モノ PCM）
-- **バッチ文字起こし・要約・翻訳**: Mistral REST API をアプリから直接呼び出し
-- **データ保存**: SwiftData（Recording モデル）
+- **Realtime transcription**: Audio is converted to 16 kHz mono PCM (S16LE) and streamed in 480 ms chunks over WebSocket.
+- **Batch transcription, summarization & translation**: Standard HTTPS calls directly to the Mistral REST API.
+- **Persistence**: Recordings and transcripts are stored locally using SwiftData.
 
-詳細な構成は [PLAN.md](./PLAN.md) を参照してください。
+## Tech Stack
 
-## セットアップ
+| Technology | Purpose |
+|------------|---------|
+| SwiftUI | User interface |
+| SwiftData | Local data persistence |
+| AVAudioEngine | Audio recording |
+| URLSessionWebSocketTask | Mistral Realtime transcription |
+| Mistral Voxtral Mini Realtime | Live transcription during recording |
+| Mistral Voxtral Mini | Batch transcription with speaker diarization |
+| Mistral Small | Summarization and translation |
+| WidgetKit | Home screen widget |
 
-### 1. iOS アプリ
+## Setup
 
-1. `Nekko.xcodeproj` を Xcode で開く
-2. Signing & Capabilities でチームを設定
-3. iPhone 実機またはシミュレータで実行
+### 1. iOS App
 
-### 2. Mistral API キー
+1. Open `Nekko.xcodeproj` in Xcode.
+2. Configure your team under Signing & Capabilities.
+3. Run on an iPhone (device or simulator).
 
-1. [Mistral AI](https://mistral.ai) で API キーを取得
-2. アプリ内の **設定** タブ → **Mistral AI** → **Mistral API キー** に入力
+### 2. Mistral API Key
 
-API キーは端末内（UserDefaults）にのみ保存され、文字起こし・要約・翻訳・リアルタイム文字起こしのすべてに使用されます。
+1. Obtain an API key from [Mistral AI](https://mistral.ai).
+2. In the app, go to the **Settings** tab → **Mistral AI** → enter your **Mistral API Key**.
 
-### 3. ウィジェット（任意）
+The key is stored locally on the device (UserDefaults) and is used for all features: realtime transcription, batch transcription, summarization, and translation.
 
-1. Xcode で File > New > Target > Widget Extension を選択
-2. Name: `NekkoWidget` で作成
-3. 生成されたファイルを `NekkoWidget/` の既存ファイルで置き換え
+### 3. Widget (optional)
 
-### 4. バックエンド（任意）
+1. In Xcode, go to File → New → Target → Widget Extension.
+2. Name it `NekkoWidget`.
+3. Replace the generated files with the ones in the `NekkoWidget/` directory.
 
-リポジトリには `NekkoBackend`（Vapor）が含まれていますが、**アプリの動作には不要**です。  
-サーバー側でプロキシやログを取りたい場合のみ利用できます。
+### 4. Backend (optional)
+
+The repository includes `NekkoBackend` (Vapor), but **the app does not require it**. It can be used as an optional proxy or for logging.
 
 ```bash
 cd NekkoBackend
@@ -62,25 +83,10 @@ export MISTRAL_API_KEY=your_key_here
 swift run
 ```
 
-サーバーは `http://localhost:8080` で起動します（アプリは現在この URL を参照しません）。
+## Supported Languages
 
-## 使用技術
+Japanese, English, Français, العربية, Deutsch, Español, हिन्दी, Italiano, 한국어, Nederlands, Português, Русский, 中文
 
-| 技術 | 用途 |
-|------|------|
-| SwiftUI | UI |
-| SwiftData | データ永続化 |
-| AVAudioEngine | 音声録音 |
-| URLSessionWebSocketTask | Mistral リアルタイム文字起こし |
-| Mistral Voxtral Mini Realtime | 録音中のライブ文字起こし |
-| Mistral Voxtral Mini | バッチ文字起こし（話者識別） |
-| Mistral Small | 要約・翻訳 |
-| WidgetKit | ホーム画面ウィジェット |
+## License
 
-## 対応言語
-
-日本語, English, Français, العربية, Deutsch, Español, हिन्दी, Italiano, 한국어, Nederlands, Português, Русский, 中文
-
-## ライセンス
-
-Hackathon Project - Mistral AI Worldwide Hackathon 2026
+Hackathon Project — Mistral AI Worldwide Hackathon 2026
