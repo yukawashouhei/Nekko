@@ -9,7 +9,6 @@ import SwiftUI
 
 struct SettingsView: View {
     @AppStorage("nekko_mistral_api_key") private var apiKey = ""
-    @AppStorage("nekko_backend_url") private var backendURL = "http://localhost:8080"
     @State private var isAPIKeyVisible = false
 
     var body: some View {
@@ -17,7 +16,6 @@ struct SettingsView: View {
             List {
                 usageSection
                 mistralSection
-                backendSection
                 aboutSection
             }
             .navigationTitle("設定")
@@ -132,29 +130,7 @@ struct SettingsView: View {
         } header: {
             Text("Mistral AI")
         } footer: {
-            Text("リアルタイム文字起こしに使用されるAPIキーです。Mistral AIのダッシュボードから取得できます。")
-        }
-    }
-
-    // MARK: - Backend Section
-
-    private var backendSection: some View {
-        Section {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("バックエンドURL")
-                    .font(.subheadline)
-
-                TextField("http://localhost:8080", text: $backendURL)
-                    .autocorrectionDisabled()
-                    .textInputAutocapitalization(.never)
-                    .keyboardType(.URL)
-                    .font(.system(.body, design: .monospaced))
-            }
-            .padding(.vertical, 4)
-        } header: {
-            Text("サーバー設定")
-        } footer: {
-            Text("バッチ文字起こし・要約・翻訳に使用するNekkoBackendサーバーのURLです。実機で使用する場合は、同じネットワーク上のMacのIPアドレスに変更してください。")
+            Text("すべてのMistral AI機能（リアルタイム文字起こし、バッチ文字起こし、要約、翻訳）に使用されます。Mistral AIのダッシュボードから取得できます。")
         }
     }
 

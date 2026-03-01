@@ -90,7 +90,15 @@ struct TranscriptionSegmentData: Codable, Identifiable {
     }
 
     var speakerLabel: String {
-        guard let speaker else { return "不明" }
+        guard let speaker, !speaker.isEmpty else { return "話者" }
+        if speaker.hasPrefix("speaker_") {
+            if let num = Int(speaker.dropFirst("speaker_".count)) {
+                return "Speaker \(num + 1)"
+            }
+        }
+        if speaker.lowercased().hasPrefix("speaker ") {
+            return speaker
+        }
         return speaker
     }
 

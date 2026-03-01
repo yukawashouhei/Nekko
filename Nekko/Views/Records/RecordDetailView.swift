@@ -151,18 +151,24 @@ struct RecordDetailView: View {
     }
 
     private func diarizedTranscriptionView(segments: [TranscriptionSegmentData]) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        let uniqueSpeakers = Set(segments.compactMap(\.speaker)).sorted()
+        let speakerIndexMap = Dictionary(uniqueKeysWithValues: uniqueSpeakers.enumerated().map { ($1, $0) })
+        let hasSpeakers = !uniqueSpeakers.isEmpty
+
+        return VStack(alignment: .leading, spacing: 12) {
             ForEach(segments) { segment in
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 6) {
-                        Image(systemName: "person.fill")
-                            .font(.caption2)
-                            .foregroundStyle(speakerColor(segment.speakerLabel))
+                        if hasSpeakers {
+                            Image(systemName: "person.fill")
+                                .font(.caption2)
+                                .foregroundStyle(speakerColor(segment.speaker, index: speakerIndexMap[segment.speaker ?? ""] ?? 0))
 
-                        Text(segment.speakerLabel)
-                            .font(.caption)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(speakerColor(segment.speakerLabel))
+                            Text(segment.speakerLabel)
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(speakerColor(segment.speaker, index: speakerIndexMap[segment.speaker ?? ""] ?? 0))
+                        }
 
                         if !segment.timeRange.isEmpty {
                             Text(segment.timeRange)
@@ -174,16 +180,15 @@ struct RecordDetailView: View {
                     Text(segment.text)
                         .font(.body)
                         .textSelection(.enabled)
-                        .padding(.leading, 20)
+                        .padding(.leading, hasSpeakers ? 20 : 0)
                 }
             }
         }
     }
 
-    private func speakerColor(_ speaker: String) -> Color {
+    private func speakerColor(_ speaker: String?, index: Int) -> Color {
         let colors: [Color] = [.blue, .purple, .green, .orange, .pink, .teal, .indigo, .mint]
-        let hash = abs(speaker.hashValue)
-        return colors[hash % colors.count]
+        return colors[index % colors.count]
     }
 
     // MARK: - Summary Tab
@@ -464,7 +469,7 @@ struct RecordDetailView: View {
                 )
                 r.finalTranscription = "えっと、今録音テスト中です。このテストの音声なので、実際には使われない音声です。"
                 r.segments = """
-                [{"speaker":"Speaker 0","start":0.0,"end":5.5,"text":"えっと、今録音テスト中です。"},{"speaker":"Speaker 1","start":5.5,"end":10.0,"text":"このテストの音声なので、実際には使われない音声です。"}]
+                [{"speaker":"speaker_0","start":0.0,"end":5.5,"text":"えっと、今録音テスト中です。"},{"speaker":"speaker_1","start":5.5,"end":10.0,"text":"このテストの音声なので、実際には使われない音声です。"}]
                 """
                 return r
             }()

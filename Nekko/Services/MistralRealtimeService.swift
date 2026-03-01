@@ -16,7 +16,6 @@ final class MistralRealtimeService: @unchecked Sendable {
 
     private var webSocketTask: URLSessionWebSocketTask?
     private var urlSession: URLSession?
-    private var sendTask: Task<Void, Never>?
     private var receiveTask: Task<Void, Never>?
     private var audioConverter: AVAudioConverter?
     private var pendingAudioData = Data()
@@ -49,7 +48,7 @@ final class MistralRealtimeService: @unchecked Sendable {
         pendingAudioData = Data()
 
         do {
-            try await connectWebSocket(language: language)
+            try await connectWebSocket()
         } catch {
             self.error = "WebSocket接続に失敗しました: \(error.localizedDescription)"
         }
@@ -63,7 +62,6 @@ final class MistralRealtimeService: @unchecked Sendable {
 
         try? await Task.sleep(for: .milliseconds(500))
 
-        sendTask?.cancel()
         receiveTask?.cancel()
         webSocketTask?.cancel(with: .goingAway, reason: nil)
         webSocketTask = nil
@@ -80,7 +78,7 @@ final class MistralRealtimeService: @unchecked Sendable {
         sendLock.lock()
         pendingAudioData.append(pcmData)
 
-        let chunkSize = Int(Self.targetSampleRate) * 2 * 480 / 1000 // 480ms chunks (15360 bytes)
+        let chunkSize = Int(Self.targetSampleRate) * 2 * 480 / 1000
         while pendingAudioData.count >= chunkSize {
             let chunk = pendingAudioData.prefix(chunkSize)
             pendingAudioData = Data(pendingAudioData.dropFirst(chunkSize))
@@ -93,11 +91,10 @@ final class MistralRealtimeService: @unchecked Sendable {
 
     // MARK: - WebSocket
 
-    private func connectWebSocket(language: String) async throws {
+    private func connectWebSocket() async throws {
         var components = URLComponents(string: Self.wsBaseURL)!
         components.queryItems = [
             URLQueryItem(name: "model", value: Self.model),
-            URLQueryItem(name: "language", value: language),
         ]
 
         guard let url = components.url else {
@@ -106,29 +103,38 @@ final class MistralRealtimeService: @unchecked Sendable {
 
         var request = URLRequest(url: url)
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        request.timeoutInterval = 300
+        request.timeoutInterval = 30
 
-        let session = URLSession(configuration: .default)
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 30
+        config.timeoutIntervalForResource = 300
+
+        let session = URLSession(configuration: config)
         self.urlSession = session
         let task = session.webSocketTask(with: request)
         self.webSocketTask = task
         task.resume()
+
+        print("[MistralRealtime] WebSocket connecting to: \(url.absoluteString)")
 
         receiveTask = Task { [weak self] in
             await self?.receiveLoop()
         }
 
         try await waitForSessionCreated()
+
+        print("[MistralRealtime] Session created, sending audio format config")
         await sendSessionUpdate()
     }
 
     private func waitForSessionCreated() async throws {
-        let timeout: UInt64 = 15_000_000_000 // 15 seconds
-        let start = ContinuousClock.now
+        let deadline = ContinuousClock.now + .seconds(15)
 
-        while ContinuousClock.now - start < .nanoseconds(Int64(timeout)) {
+        while ContinuousClock.now < deadline {
             if isConnected { return }
-            if let error = self.error { throw NSError(domain: "MistralRealtime", code: -1, userInfo: [NSLocalizedDescriptionKey: error]) }
+            if let error = self.error {
+                throw NSError(domain: "MistralRealtime", code: -1, userInfo: [NSLocalizedDescriptionKey: error])
+            }
             try await Task.sleep(for: .milliseconds(100))
         }
 
@@ -145,7 +151,6 @@ final class MistralRealtimeService: @unchecked Sendable {
                     "encoding": "pcm_s16le",
                     "sample_rate": Int(Self.targetSampleRate),
                 ],
-                "target_streaming_delay_ms": 480,
             ],
         ]
 
@@ -153,6 +158,7 @@ final class MistralRealtimeService: @unchecked Sendable {
               let jsonString = String(data: data, encoding: .utf8)
         else { return }
 
+        print("[MistralRealtime] Sending session.update: \(jsonString)")
         try? await webSocketTask?.send(.string(jsonString))
     }
 
@@ -174,6 +180,7 @@ final class MistralRealtimeService: @unchecked Sendable {
                 }
             } catch {
                 if !isStopping {
+                    print("[MistralRealtime] WebSocket receive error: \(error)")
                     await MainActor.run {
                         self.error = "WebSocket受信エラー: \(error.localizedDescription)"
                         self.isConnected = false
@@ -188,15 +195,19 @@ final class MistralRealtimeService: @unchecked Sendable {
         guard let data = text.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let type = json["type"] as? String
-        else { return }
+        else {
+            print("[MistralRealtime] Failed to parse event: \(text.prefix(200))")
+            return
+        }
 
         Task { @MainActor in
             switch type {
             case "session.created":
+                print("[MistralRealtime] session.created")
                 self.isConnected = true
 
             case "session.updated":
-                break
+                print("[MistralRealtime] session.updated")
 
             case "transcription.text.delta":
                 if let deltaText = json["text"] as? String {
@@ -204,18 +215,21 @@ final class MistralRealtimeService: @unchecked Sendable {
                 }
 
             case "transcription.done":
-                break
+                print("[MistralRealtime] transcription.done")
 
             case "error":
+                let errorMsg: String
                 if let errorObj = json["error"] as? [String: Any],
                    let message = errorObj["message"] as? String {
-                    self.error = message
+                    errorMsg = message
                 } else {
-                    self.error = "Mistral APIエラーが発生しました"
+                    errorMsg = "Mistral APIエラーが発生しました"
                 }
+                print("[MistralRealtime] Error: \(errorMsg)")
+                self.error = errorMsg
 
             default:
-                break
+                print("[MistralRealtime] Unknown event: \(type)")
             }
         }
     }
@@ -225,7 +239,7 @@ final class MistralRealtimeService: @unchecked Sendable {
     private func sendAudioChunk(_ data: Data) {
         let base64 = data.base64EncodedString()
         let message: [String: Any] = [
-            "type": "input_audio_buffer.append",
+            "type": "input_audio.append",
             "audio": base64,
         ]
 
@@ -235,13 +249,13 @@ final class MistralRealtimeService: @unchecked Sendable {
 
         webSocketTask?.send(.string(jsonString)) { error in
             if let error {
-                print("Audio send error: \(error.localizedDescription)")
+                print("[MistralRealtime] Audio send error: \(error.localizedDescription)")
             }
         }
     }
 
     private func sendFlushAudio() {
-        let message = "{\"type\":\"input_audio_buffer.flush\"}"
+        let message = "{\"type\":\"input_audio.flush\"}"
         webSocketTask?.send(.string(message)) { _ in }
     }
 
@@ -258,8 +272,9 @@ final class MistralRealtimeService: @unchecked Sendable {
 
         sendFlushAudio()
 
-        let message = "{\"type\":\"input_audio_buffer.end\"}"
+        let message = "{\"type\":\"input_audio.end\"}"
         webSocketTask?.send(.string(message)) { _ in }
+        print("[MistralRealtime] Sent input_audio.end")
     }
 
     // MARK: - Audio Conversion (to 16kHz mono S16LE)
