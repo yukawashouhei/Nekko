@@ -45,7 +45,7 @@ struct RecordingView: View {
                         .resizable()
                         .scaledToFit()
                         .frame(height: 144)
-                        .padding(.top, 124)
+                        .padding(.top, 136)
                 }
             }
             .onAppear {
