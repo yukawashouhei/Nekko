@@ -40,7 +40,7 @@ struct AudioWaveformView: View {
                 let opacity = 0.3 + Double(level) * 0.7
                 context.fill(
                     path,
-                    with: .color(.orange.opacity(opacity))
+                    with: .color(.blue.opacity(opacity))
                 )
             }
         }

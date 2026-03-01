@@ -93,20 +93,7 @@ struct MistralService: Sendable {
     // MARK: - Summarization (Mistral Small)
 
     func summarize(text: String, language: String) async throws -> String {
-        let url = URL(string: "\(baseURL)/chat/completions")!
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.timeoutInterval = 120
-
-        let languageName: String
-        switch language {
-        case "ja": languageName = "日本語"
-        case "en": languageName = "English"
-        case "fr": languageName = "Français"
-        default: languageName = "the same language as the input"
-        }
+        let languageName = languageDisplayName(language)
 
         let chatRequest = ChatRequest(
             model: "mistral-small-latest",
@@ -127,6 +114,48 @@ struct MistralService: Sendable {
             temperature: 0.3
         )
 
+        return try await chatCompletion(chatRequest)
+    }
+
+    // MARK: - Translation (Mistral Small)
+
+    func translate(text: String, fromLanguage: String, toLanguage: String) async throws -> String {
+        let fromName = languageDisplayName(fromLanguage)
+        let toName = languageDisplayName(toLanguage)
+
+        let chatRequest = ChatRequest(
+            model: "mistral-small-latest",
+            messages: [
+                ChatMessage(
+                    role: "system",
+                    content: """
+                        You are a professional translator. Translate the following text from \(fromName) to \(toName). \
+                        Maintain the original meaning, tone, and formatting. \
+                        If the text contains speaker labels or timestamps, preserve them. \
+                        Only output the translated text, no explanations.
+                        """
+                ),
+                ChatMessage(
+                    role: "user",
+                    content: text
+                ),
+            ],
+            temperature: 0.2
+        )
+
+        return try await chatCompletion(chatRequest)
+    }
+
+    // MARK: - Helpers
+
+    private func chatCompletion(_ chatRequest: ChatRequest) async throws -> String {
+        let url = URL(string: "\(baseURL)/chat/completions")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 120
+
         request.httpBody = try JSONEncoder().encode(chatRequest)
 
         let (data, response) = try await URLSession.shared.data(for: request)
@@ -145,6 +174,25 @@ struct MistralService: Sendable {
             throw MistralError.emptyResponse
         }
         return content
+    }
+
+    private func languageDisplayName(_ code: String) -> String {
+        switch code {
+        case "ja": "日本語"
+        case "en": "English"
+        case "fr": "Français"
+        case "de": "Deutsch"
+        case "es": "Español"
+        case "it": "Italiano"
+        case "pt": "Português"
+        case "nl": "Nederlands"
+        case "ru": "Русский"
+        case "zh": "中文"
+        case "ko": "한국어"
+        case "ar": "العربية"
+        case "hi": "हिन्दी"
+        default: "the same language as the input"
+        }
     }
 }
 

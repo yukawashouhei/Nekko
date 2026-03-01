@@ -39,6 +39,18 @@ func routes(_ app: Application) throws {
         )
         return SummarizeResponse(summary: summary)
     }
+
+    app.post("api", "translate") { req async throws -> TranslateResponse in
+        let input = try req.content.decode(TranslateInput.self)
+
+        let mistral = MistralService(apiKey: getMistralAPIKey())
+        let translation = try await mistral.translate(
+            text: input.text,
+            fromLanguage: input.fromLanguage ?? "ja",
+            toLanguage: input.toLanguage ?? "en"
+        )
+        return TranslateResponse(translation: translation)
+    }
 }
 
 private func getMistralAPIKey() -> String {
@@ -74,4 +86,14 @@ struct SummarizeInput: Content {
 
 struct SummarizeResponse: Content {
     let summary: String
+}
+
+struct TranslateInput: Content {
+    let text: String
+    let fromLanguage: String?
+    let toLanguage: String?
+}
+
+struct TranslateResponse: Content {
+    let translation: String
 }

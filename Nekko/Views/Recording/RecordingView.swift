@@ -75,39 +75,83 @@ struct RecordingView: View {
     @State private var animatingDot = true
 
     private var transcriptionArea: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 8) {
-                if viewModel.isRecording {
-                    VStack(spacing: 12) {
-                        ProgressView()
-                            .controlSize(.regular)
-                        Text("録音停止後にMistral AIで文字起こしします")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 8) {
+                    if viewModel.isRecording {
+                        realtimeTranscriptionContent
+                            .onChange(of: viewModel.liveTranscription) {
+                                withAnimation {
+                                    proxy.scrollTo("bottom", anchor: .bottom)
+                                }
+                            }
+                    } else {
+                        idleContent
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 40)
-                } else {
-                    VStack(spacing: 12) {
-                        Image(systemName: "waveform")
-                            .font(.system(size: 40))
-                            .foregroundStyle(.tertiary)
-                        Text("録音ボタンを押して開始")
-                            .font(.subheadline)
-                            .foregroundStyle(.tertiary)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .padding(.top, 80)
                 }
+                .padding()
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                Color.clear
+                    .frame(height: 1)
+                    .id("bottom")
             }
-            .padding()
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .onAppear {
             withAnimation(.easeInOut(duration: 0.8).repeatForever()) {
                 animatingDot.toggle()
             }
         }
+    }
+
+    private var realtimeTranscriptionContent: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if viewModel.liveTranscription.isEmpty {
+                HStack(spacing: 8) {
+                    if viewModel.isRealtimeConnected {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("音声を認識中...")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("Mistral AIに接続中...")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.top, 40)
+            } else {
+                Text(viewModel.liveTranscription)
+                    .font(.body)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+
+    private var idleContent: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "waveform")
+                .font(.system(size: 40))
+                .foregroundStyle(.tertiary)
+
+            if viewModel.hasAPIKey {
+                Text("録音ボタンを押して開始")
+                    .font(.subheadline)
+                    .foregroundStyle(.tertiary)
+            } else {
+                Text("設定タブでAPIキーを入力してから\n録音を開始してください")
+                    .font(.subheadline)
+                    .foregroundStyle(.tertiary)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.top, 80)
     }
 
     private var controlsArea: some View {

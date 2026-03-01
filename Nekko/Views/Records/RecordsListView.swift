@@ -105,7 +105,7 @@ struct RecordingRowView: View {
                             .controlSize(.mini)
                         Text("処理中...")
                             .font(.caption)
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(.blue)
                     }
                 } else if recording.finalTranscription != nil {
                     Image(systemName: "checkmark.circle.fill")

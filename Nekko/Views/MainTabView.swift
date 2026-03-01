@@ -23,7 +23,7 @@ struct MainTabView: View {
                 SettingsView()
             }
         }
-        .tint(.orange)
+        .tint(.blue)
     }
 }
 

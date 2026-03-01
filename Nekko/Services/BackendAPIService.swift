@@ -21,6 +21,11 @@ final class BackendAPIService {
     // MARK: - Transcription
 
     func transcribe(audioFileURL: URL, language: String) async throws -> String {
+        let result = try await transcribeWithSegments(audioFileURL: audioFileURL, language: language)
+        return result.text
+    }
+
+    func transcribeWithSegments(audioFileURL: URL, language: String) async throws -> TranscriptionResult {
         let url = URL(string: "\(backendURL)/api/transcribe")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -52,7 +57,10 @@ final class BackendAPIService {
         }
 
         let result = try JSONDecoder().decode(TranscriptionResponse.self, from: data)
-        return result.text
+        return TranscriptionResult(
+            text: result.text,
+            segments: result.segments
+        )
     }
 
     // MARK: - Summarization
@@ -79,6 +87,32 @@ final class BackendAPIService {
 
         let result = try JSONDecoder().decode(SummarizeResponse.self, from: data)
         return result.summary
+    }
+
+    // MARK: - Translation
+
+    func translate(text: String, fromLanguage: String, toLanguage: String) async throws -> String {
+        let url = URL(string: "\(backendURL)/api/translate")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 120
+
+        let body = TranslateRequest(text: text, fromLanguage: fromLanguage, toLanguage: toLanguage)
+        request.httpBody = try JSONEncoder().encode(body)
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200...299).contains(httpResponse.statusCode)
+        else {
+            throw APIError.serverError(
+                (response as? HTTPURLResponse)?.statusCode ?? 0
+            )
+        }
+
+        let result = try JSONDecoder().decode(TranslateResponse.self, from: data)
+        return result.translation
     }
 
     // MARK: - Multipart Body
@@ -124,6 +158,11 @@ extension BackendAPIService {
         }
     }
 
+    struct TranscriptionResult {
+        let text: String
+        let segments: [TranscriptionSegment]?
+    }
+
     struct TranscriptionResponse: Codable {
         let text: String
         let segments: [TranscriptionSegment]?
@@ -143,6 +182,16 @@ extension BackendAPIService {
 
     struct SummarizeResponse: Codable {
         let summary: String
+    }
+
+    struct TranslateRequest: Codable {
+        let text: String
+        let fromLanguage: String
+        let toLanguage: String
+    }
+
+    struct TranslateResponse: Codable {
+        let translation: String
     }
 }
 

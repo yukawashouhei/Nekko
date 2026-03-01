@@ -8,10 +8,16 @@
 import SwiftUI
 
 struct SettingsView: View {
+    @AppStorage("nekko_mistral_api_key") private var apiKey = ""
+    @AppStorage("nekko_backend_url") private var backendURL = "http://localhost:8080"
+    @State private var isAPIKeyVisible = false
+
     var body: some View {
         NavigationStack {
             List {
                 usageSection
+                mistralSection
+                backendSection
                 aboutSection
             }
             .navigationTitle("設定")
@@ -76,10 +82,80 @@ struct SettingsView: View {
                 // Placeholder
             }
             .buttonStyle(.borderedProminent)
-            .tint(.orange)
+            .tint(.blue)
             .controlSize(.small)
         }
         .padding(.vertical, 4)
+    }
+
+    // MARK: - Mistral API Section
+
+    private var mistralSection: some View {
+        Section {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Mistral API キー")
+                    .font(.subheadline)
+
+                HStack {
+                    if isAPIKeyVisible {
+                        TextField("sk-...", text: $apiKey)
+                            .textContentType(.password)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                            .font(.system(.body, design: .monospaced))
+                    } else {
+                        SecureField("sk-...", text: $apiKey)
+                            .textContentType(.password)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                    }
+
+                    Button {
+                        isAPIKeyVisible.toggle()
+                    } label: {
+                        Image(systemName: isAPIKeyVisible ? "eye.slash" : "eye")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .padding(.vertical, 4)
+
+            HStack(spacing: 6) {
+                Image(systemName: apiKey.isEmpty ? "xmark.circle.fill" : "checkmark.circle.fill")
+                    .foregroundStyle(apiKey.isEmpty ? .red : .green)
+                    .font(.caption)
+
+                Text(apiKey.isEmpty ? "APIキーが未設定です" : "APIキーが設定済みです")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        } header: {
+            Text("Mistral AI")
+        } footer: {
+            Text("リアルタイム文字起こしに使用されるAPIキーです。Mistral AIのダッシュボードから取得できます。")
+        }
+    }
+
+    // MARK: - Backend Section
+
+    private var backendSection: some View {
+        Section {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("バックエンドURL")
+                    .font(.subheadline)
+
+                TextField("http://localhost:8080", text: $backendURL)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .keyboardType(.URL)
+                    .font(.system(.body, design: .monospaced))
+            }
+            .padding(.vertical, 4)
+        } header: {
+            Text("サーバー設定")
+        } footer: {
+            Text("バッチ文字起こし・要約・翻訳に使用するNekkoBackendサーバーのURLです。実機で使用する場合は、同じネットワーク上のMacのIPアドレスに変更してください。")
+        }
     }
 
     // MARK: - About Section
@@ -94,6 +170,13 @@ struct SettingsView: View {
             }
 
             HStack {
+                Text("AIモデル (リアルタイム)")
+                Spacer()
+                Text("Voxtral Mini Realtime")
+                    .foregroundStyle(.secondary)
+            }
+
+            HStack {
                 Text("AIモデル (文字起こし)")
                 Spacer()
                 Text("Voxtral Mini")
@@ -101,7 +184,7 @@ struct SettingsView: View {
             }
 
             HStack {
-                Text("AIモデル (要約)")
+                Text("AIモデル (要約・翻訳)")
                 Spacer()
                 Text("Mistral Small")
                     .foregroundStyle(.secondary)
@@ -110,9 +193,11 @@ struct SettingsView: View {
             Link(destination: URL(string: "https://mistral.ai")!) {
                 HStack {
                     Text("Powered by Mistral AI")
+                        .foregroundStyle(.blue)
                     Spacer()
                     Image(systemName: "arrow.up.right")
                         .font(.caption)
+                        .foregroundStyle(.blue)
                 }
             }
         } header: {

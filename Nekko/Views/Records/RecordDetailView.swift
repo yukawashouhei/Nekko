@@ -16,10 +16,14 @@ struct RecordDetailView: View {
     @State private var showShareSheet = false
     @State private var selectedTab: DetailTab = .transcription
     @State private var isRetrying = false
+    @State private var isTranslating = false
+    @State private var showLanguagePicker = false
+    @State private var targetLanguage: SupportedLanguage = .english
 
     enum DetailTab: String, CaseIterable {
         case transcription = "記録"
         case summary = "要約"
+        case translation = "翻訳"
     }
 
     var body: some View {
@@ -78,7 +82,7 @@ struct RecordDetailView: View {
                         .controlSize(.small)
                     Text("Mistral AIで処理中...")
                         .font(.caption)
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(.blue)
                 }
             }
         }
@@ -94,6 +98,8 @@ struct RecordDetailView: View {
                     transcriptionContent
                 case .summary:
                     summaryContent
+                case .translation:
+                    translationContent
                 }
             }
             .padding()
@@ -101,9 +107,13 @@ struct RecordDetailView: View {
         }
     }
 
+    // MARK: - Transcription Tab
+
     private var transcriptionContent: some View {
         Group {
-            if let final_ = recording.finalTranscription, !final_.isEmpty {
+            if let segments = recording.decodedSegments, !segments.isEmpty {
+                diarizedTranscriptionView(segments: segments)
+            } else if let final_ = recording.finalTranscription, !final_.isEmpty {
                 Text(final_)
                     .font(.body)
                     .textSelection(.enabled)
@@ -130,7 +140,7 @@ struct RecordDetailView: View {
                             retryTranscription()
                         }
                         .buttonStyle(.borderedProminent)
-                        .tint(.orange)
+                        .tint(.blue)
                         .disabled(isRetrying)
                     }
                 }
@@ -139,6 +149,44 @@ struct RecordDetailView: View {
             }
         }
     }
+
+    private func diarizedTranscriptionView(segments: [TranscriptionSegmentData]) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ForEach(segments) { segment in
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "person.fill")
+                            .font(.caption2)
+                            .foregroundStyle(speakerColor(segment.speakerLabel))
+
+                        Text(segment.speakerLabel)
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(speakerColor(segment.speakerLabel))
+
+                        if !segment.timeRange.isEmpty {
+                            Text(segment.timeRange)
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+
+                    Text(segment.text)
+                        .font(.body)
+                        .textSelection(.enabled)
+                        .padding(.leading, 20)
+                }
+            }
+        }
+    }
+
+    private func speakerColor(_ speaker: String) -> Color {
+        let colors: [Color] = [.blue, .purple, .green, .orange, .pink, .teal, .indigo, .mint]
+        let hash = abs(speaker.hashValue)
+        return colors[hash % colors.count]
+    }
+
+    // MARK: - Summary Tab
 
     private var summaryContent: some View {
         Group {
@@ -169,7 +217,7 @@ struct RecordDetailView: View {
                             retrySummarization()
                         }
                         .buttonStyle(.borderedProminent)
-                        .tint(.orange)
+                        .tint(.blue)
                         .disabled(isRetrying)
                     }
                 }
@@ -179,6 +227,86 @@ struct RecordDetailView: View {
         }
     }
 
+    // MARK: - Translation Tab
+
+    private var translationContent: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Text("翻訳先:")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+
+                Picker("翻訳先", selection: $targetLanguage) {
+                    ForEach(availableTranslationLanguages, id: \.self) { lang in
+                        Text(lang.displayName).tag(lang)
+                    }
+                }
+                .pickerStyle(.menu)
+                .tint(.blue)
+
+                Spacer()
+
+                Button {
+                    performTranslation()
+                } label: {
+                    if isTranslating {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Label("翻訳", systemImage: "globe")
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.blue)
+                .disabled(isTranslating || recording.displayTranscription.isEmpty)
+            }
+
+            if let translation = recording.translation, !translation.isEmpty {
+                if let langCode = recording.translationLanguage,
+                   let lang = SupportedLanguage(rawValue: langCode) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "globe")
+                            .font(.caption)
+                        Text(lang.displayName)
+                            .font(.caption)
+                    }
+                    .foregroundStyle(.secondary)
+                }
+
+                Text(translation)
+                    .font(.body)
+                    .textSelection(.enabled)
+            } else if isTranslating {
+                VStack(spacing: 12) {
+                    ProgressView()
+                    Text("翻訳中...")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.top, 40)
+            } else {
+                VStack(spacing: 12) {
+                    Image(systemName: "globe")
+                        .font(.system(size: 40))
+                        .foregroundStyle(.tertiary)
+                    Text("翻訳先の言語を選択して「翻訳」を押してください")
+                        .font(.subheadline)
+                        .foregroundStyle(.tertiary)
+                        .multilineTextAlignment(.center)
+                }
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.top, 40)
+            }
+        }
+    }
+
+    private var availableTranslationLanguages: [SupportedLanguage] {
+        SupportedLanguage.allCases.filter { $0.rawValue != recording.language }
+    }
+
+    // MARK: - Audio Player
+
     private var audioPlayerBar: some View {
         HStack(spacing: 16) {
             Button {
@@ -186,7 +314,7 @@ struct RecordDetailView: View {
             } label: {
                 Image(systemName: isPlaying ? "pause.circle.fill" : "play.circle.fill")
                     .font(.system(size: 36))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(.blue)
             }
 
             VStack(alignment: .leading) {
@@ -209,11 +337,21 @@ struct RecordDetailView: View {
             text += "■ 要約\n\(summary)\n\n"
         }
         text += "■ 文字起こし\n\(recording.displayTranscription)"
+        if let translation = recording.translation {
+            text += "\n\n■ 翻訳\n\(translation)"
+        }
         return text
     }
 
     private func copyToClipboard() {
-        UIPasteboard.general.string = recording.displayTranscription
+        switch selectedTab {
+        case .transcription:
+            UIPasteboard.general.string = recording.displayTranscription
+        case .summary:
+            UIPasteboard.general.string = recording.summary ?? ""
+        case .translation:
+            UIPasteboard.general.string = recording.translation ?? ""
+        }
     }
 
     private func togglePlayback() {
@@ -249,14 +387,21 @@ struct RecordDetailView: View {
             )[0]
             let audioURL = documentsPath.appendingPathComponent(audioFileName)
             do {
-                let transcription = try await BackendAPIService.shared.transcribe(
+                let result = try await BackendAPIService.shared.transcribeWithSegments(
                     audioFileURL: audioURL,
                     language: recording.language
                 )
-                recording.finalTranscription = transcription
+                recording.finalTranscription = result.text
+
+                if let segments = result.segments, !segments.isEmpty {
+                    let encoder = JSONEncoder()
+                    if let segmentsData = try? encoder.encode(segments) {
+                        recording.segments = String(data: segmentsData, encoding: .utf8)
+                    }
+                }
 
                 let summary = try await BackendAPIService.shared.summarize(
-                    text: transcription,
+                    text: result.text,
                     language: recording.language
                 )
                 recording.summary = summary
@@ -286,6 +431,25 @@ struct RecordDetailView: View {
             isRetrying = false
         }
     }
+
+    private func performTranslation() {
+        isTranslating = true
+        Task {
+            do {
+                let text = recording.displayTranscription
+                let translation = try await BackendAPIService.shared.translate(
+                    text: text,
+                    fromLanguage: recording.language,
+                    toLanguage: targetLanguage.rawValue
+                )
+                recording.translation = translation
+                recording.translationLanguage = targetLanguage.rawValue
+            } catch {
+                print("Translation failed: \(error)")
+            }
+            isTranslating = false
+        }
+    }
 }
 
 #Preview {
@@ -298,7 +462,10 @@ struct RecordDetailView: View {
                     duration: 125,
                     audioFileName: nil
                 )
-                r.finalTranscription = "えっと、今録音テスト中です。このテストの音声なので、実際には使われない音声です。とねっこのテスト用に今録音しています。"
+                r.finalTranscription = "えっと、今録音テスト中です。このテストの音声なので、実際には使われない音声です。"
+                r.segments = """
+                [{"speaker":"Speaker 0","start":0.0,"end":5.5,"text":"えっと、今録音テスト中です。"},{"speaker":"Speaker 1","start":5.5,"end":10.0,"text":"このテストの音声なので、実際には使われない音声です。"}]
+                """
                 return r
             }()
         )
