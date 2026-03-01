@@ -57,7 +57,7 @@ final class RecordingViewModel {
 
     private func startRecording() {
         guard !UsageTracker.shared.isLimitReached else {
-            errorMessage = "今月の利用上限（700分）に達しました。プレミアムプランにアップグレードしてください。"
+            errorMessage = "今月の利用上限（600分）に達しました。プレミアムプランにアップグレードしてください。"
             showError = true
             return
         }
@@ -91,7 +91,8 @@ final class RecordingViewModel {
                 locale: selectedLanguage.sfSpeechLocale
             ) { [weak self] text in
                 Task { @MainActor [weak self] in
-                    self?.liveTranscription = text
+                    guard let self else { return }
+                    self.liveTranscription = text
                 }
             }
 
@@ -114,32 +115,39 @@ final class RecordingViewModel {
         displayTimer = nil
 
         let result = audioRecorder.stopRecording()
-        transcriptionService.stopTranscription()
+        let duration = result.duration
+        let fileName = currentAudioFileName.map { "\($0).m4a" }
+        let language = selectedLanguage.rawValue
 
         isRecording = false
 
-        UsageTracker.shared.addUsage(seconds: result.duration)
+        Task { @MainActor in
+            let finalText = await transcriptionService.stopAndGetFinalText()
+            let transcription = finalText.isEmpty ? liveTranscription : finalText
 
-        let title = generateTitle()
-        let recording = Recording(
-            title: title,
-            language: selectedLanguage.rawValue,
-            duration: result.duration,
-            audioFileName: currentAudioFileName.map { "\($0).m4a" },
-            liveTranscription: liveTranscription
-        )
+            UsageTracker.shared.addUsage(seconds: duration)
 
-        modelContext.insert(recording)
+            let title = generateTitle()
+            let recording = Recording(
+                title: title,
+                language: language,
+                duration: duration,
+                audioFileName: fileName,
+                liveTranscription: transcription
+            )
 
-        if NetworkMonitor.shared.isConnected {
-            recording.isProcessing = true
-            Task {
-                await processWithMistral(recording: recording, modelContext: modelContext)
+            modelContext.insert(recording)
+
+            if NetworkMonitor.shared.isConnected {
+                recording.isProcessing = true
+                Task {
+                    await processWithMistral(recording: recording, modelContext: modelContext)
+                }
             }
-        }
 
-        liveTranscription = ""
-        audioLevels = Array(repeating: 0, count: 60)
+            liveTranscription = ""
+            audioLevels = Array(repeating: 0, count: 60)
+        }
     }
 
     private func generateTitle() -> String {

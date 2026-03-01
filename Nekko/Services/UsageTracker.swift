@@ -11,7 +11,7 @@ import Foundation
 final class UsageTracker {
     static let shared = UsageTracker()
 
-    static let monthlyLimitSeconds: TimeInterval = 42_000  // 700 minutes
+    static let monthlyLimitSeconds: TimeInterval = 36_000  // 600 minutes
 
     private let defaults = UserDefaults.standard
     private let usageKey = "nekko_monthly_usage_seconds"
@@ -24,7 +24,7 @@ final class UsageTracker {
     }
 
     var remainingMinutes: Int {
-        max(0, 700 - usedMinutesThisMonth)
+        max(0, 600 - usedMinutesThisMonth)
     }
 
     var usageRatio: Double {

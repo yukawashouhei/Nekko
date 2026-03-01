@@ -8,13 +8,10 @@
 import SwiftUI
 
 struct SettingsView: View {
-    @State private var backendURL = BackendAPIService.shared.backendURL
-
     var body: some View {
         NavigationStack {
             List {
                 usageSection
-                serverSection
                 aboutSection
             }
             .navigationTitle("設定")
@@ -30,7 +27,7 @@ struct SettingsView: View {
                     Text("今月の使用量")
                         .font(.headline)
                     Spacer()
-                    Text("\(UsageTracker.shared.usedMinutesThisMonth) / 700 分")
+                    Text("\(UsageTracker.shared.usedMinutesThisMonth) / 600 分")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
@@ -53,8 +50,6 @@ struct SettingsView: View {
             }
         } header: {
             Text("利用状況")
-        } footer: {
-            Text("無料プランでは1ヶ月あたり700分の録音が可能です。")
         }
     }
 
@@ -85,29 +80,6 @@ struct SettingsView: View {
             .controlSize(.small)
         }
         .padding(.vertical, 4)
-    }
-
-    // MARK: - Server Section
-
-    private var serverSection: some View {
-        Section {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("バックエンドURL")
-                    .font(.subheadline)
-                TextField("http://localhost:8080", text: $backendURL)
-                    .textFieldStyle(.roundedBorder)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .onChange(of: backendURL) { _, newValue in
-                        BackendAPIService.shared.backendURL = newValue
-                    }
-            }
-            .padding(.vertical, 4)
-        } header: {
-            Text("サーバー設定")
-        } footer: {
-            Text("Mistral API通信用のバックエンドサーバーのURLを設定します。")
-        }
     }
 
     // MARK: - About Section
